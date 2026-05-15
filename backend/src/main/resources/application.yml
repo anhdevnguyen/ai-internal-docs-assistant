@@ -1,19 +1,29 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/ai_docs_db
-    username: postgres
-    password: postgres
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/ai_docs_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
 
   jpa:
     hibernate:
       ddl-auto: validate
-
     properties:
       hibernate:
         format_sql: true
+    open-in-view: false
 
   flyway:
     enabled: true
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
+
+app:
+  jwt:
+    # Must be Base64-encoded secret, minimum 256 bits for HS256
+    # Generate: openssl rand -base64 32
+    access-token-secret: ${JWT_ACCESS_SECRET:u4H5lW5l3pze23eYpu88jTKXgjz5cf395WXXOfQiSAZ}
+    access-token-ttl: ${JWT_ACCESS_TTL:15m}
+    refresh-token-ttl: ${JWT_REFRESH_TTL:7d}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
