@@ -7,6 +7,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
+import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -27,9 +28,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain
+            @NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
 
         String header = request.getHeader(HttpHeaders.AUTHORIZATION);
@@ -42,19 +43,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = header.substring(BEARER_PREFIX.length());
             JwtProvider.ParsedClaims claims = jwtProvider.validateAndParse(token);
 
-            UserPrincipal principal = new UserPrincipal(
-                    claims.userId(),
-                    claims.tenantId(),
-                    claims.role()
-            );
-
-            // Set Spring Security context for downstream authorization checks
-            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                    principal,
-                    null,
-                    List.of(new SimpleGrantedAuthority("ROLE_" + claims.role()))
-            );
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+            SecurityContextHolder.getContext().setAuthentication(buildAuthentication(claims));
 
             // Set TenantContext — enforced at repository layer for data isolation
             TenantContext.setTenantId(claims.tenantId());
@@ -71,5 +60,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             TenantContext.clear();
             SecurityContextHolder.clearContext();
         }
+    }
+
+    private static UsernamePasswordAuthenticationToken buildAuthentication(JwtProvider.ParsedClaims claims) {
+        UserPrincipal principal = new UserPrincipal(
+                claims.userId(),
+                claims.tenantId(),
+                claims.role()
+        );
+        return new UsernamePasswordAuthenticationToken(
+                principal,
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_" + claims.role()))
+        );
     }
 }
