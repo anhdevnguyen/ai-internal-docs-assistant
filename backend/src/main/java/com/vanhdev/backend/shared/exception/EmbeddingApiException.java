@@ -1,5 +1,8 @@
 package com.vanhdev.backend.shared.exception;
 
+import lombok.Getter;
+
+@Getter
 public class EmbeddingApiException extends RuntimeException {
 
     private final boolean rateLimited;
@@ -9,5 +12,4 @@ public class EmbeddingApiException extends RuntimeException {
         this.rateLimited = rateLimited;
     }
 
-    public boolean isRateLimited() { return rateLimited; }
 }

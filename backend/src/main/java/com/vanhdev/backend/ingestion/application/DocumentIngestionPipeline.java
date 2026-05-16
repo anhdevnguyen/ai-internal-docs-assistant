@@ -1,87 +1,88 @@
 package com.vanhdev.backend.ingestion.application;
 
-import com.vanhdev.backend.document.domain.Document;
-import com.vanhdev.backend.document.domain.DocumentStatus;
-import com.vanhdev.backend.document.infrastructure.DocumentJpaRepository;
-import com.vanhdev.backend.document.infrastructure.VectorChunkRepository;
 import com.vanhdev.backend.ingestion.domain.ChunkingStrategy;
 import com.vanhdev.backend.ingestion.domain.TextChunk;
 import com.vanhdev.backend.ingestion.infrastructure.embedding.EmbeddingPort;
 import com.vanhdev.backend.ingestion.infrastructure.extraction.TextExtractorPort;
-import com.vanhdev.backend.shared.exception.EmbeddingApiException;
-import com.vanhdev.backend.shared.exception.TextExtractionException;
-import com.vanhdev.backend.shared.security.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.UUID;
 
-@Service
+/**
+ * Async pipeline that drives the document from PENDING → PROCESSING → INDEXED (or FAILED).
+ * Deliberately not @Transactional at the class level — each stage commits independently
+ * via IngestionTransactions to avoid holding a DB connection across OpenAI API calls.
+ * The @Async annotation causes Spring to dispatch this on the `ingestion-` thread pool
+ * (configured in application.yml), freeing the HTTP thread immediately after upload.
+ */
+@Component
 public class DocumentIngestionPipeline {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentIngestionPipeline.class);
 
-    private final DocumentJpaRepository documentRepository;
-    private final VectorChunkRepository vectorChunkRepository;
+    private final IngestionTransactions transactions;
     private final TextExtractorPort textExtractor;
     private final ChunkingStrategy chunkingStrategy;
     private final EmbeddingPort embeddingPort;
-    // Self-reference for transactional dispatch — avoids Spring AOP self-invocation bypass
-    private final IngestionTransactions tx;
 
-    public DocumentIngestionPipeline(DocumentJpaRepository documentRepository,
-                                      VectorChunkRepository vectorChunkRepository,
-                                      TextExtractorPort textExtractor,
-                                      ChunkingStrategy chunkingStrategy,
-                                      EmbeddingPort embeddingPort,
-                                      IngestionTransactions tx) {
-        this.documentRepository = documentRepository;
-        this.vectorChunkRepository = vectorChunkRepository;
+    public DocumentIngestionPipeline(IngestionTransactions transactions,
+                                     TextExtractorPort textExtractor,
+                                     ChunkingStrategy chunkingStrategy,
+                                     EmbeddingPort embeddingPort) {
+        this.transactions = transactions;
         this.textExtractor = textExtractor;
         this.chunkingStrategy = chunkingStrategy;
         this.embeddingPort = embeddingPort;
-        this.tx = tx;
     }
 
-    /**
-     * Orchestrates the ingestion pipeline. Not @Transactional — holding a DB connection
-     * open during text extraction and embedding API calls would exhaust the connection pool.
-     * Transactional boundaries are explicit in IngestionTransactions.
-     */
-    public void ingest(UUID documentId, byte[] fileContent, String mimeType) {
-        log.info("Starting ingestion for document {}", documentId);
-        tx.updateStatus(documentId, DocumentStatus.PROCESSING, null);
+    @Async
+    public void process(UUID tenantId, UUID documentId, String storagePath) {
+        log.info("Ingestion started [documentId={}]", documentId);
 
         try {
-            String text = textExtractor.extract(fileContent, mimeType);
-            List<TextChunk> chunks = chunkingStrategy.chunk(text);
+            // Stage 1 — Transition: PENDING → PROCESSING (commit)
+            var doc = transactions.markProcessing(tenantId, documentId);
 
-            if (chunks.isEmpty()) {
-                tx.updateStatus(documentId, DocumentStatus.FAILED,
-                        "No indexable content produced from document");
+            // Stage 2 — Extract (CPU-bound, no DB connection held)
+            String rawText = textExtractor.extract(doc.getStoragePath());
+
+            if (rawText.isBlank()) {
+                transactions.markFailed(tenantId, documentId, "Extracted text is empty — document may be scanned or corrupt");
+                log.warn("Empty extraction result [documentId={}]", documentId);
                 return;
             }
 
-            List<float[]> embeddings = embeddingPort.embedBatch(
-                    chunks.stream().map(TextChunk::content).toList());
+            // Stage 3 — Chunk (in-memory, fast)
+            List<TextChunk> chunks = chunkingStrategy.chunk(rawText);
 
-            UUID tenantId = TenantContext.requireTenantId();
-            tx.persistChunksAndMarkIndexed(documentId, tenantId, chunks, embeddings);
+            if (chunks.isEmpty()) {
+                transactions.markFailed(tenantId, documentId, "Chunking produced no segments");
+                return;
+            }
 
-            log.info("Ingestion complete for document {} — {} chunks indexed", documentId, chunks.size());
+            // Stage 4 — Embed (network I/O — no DB connection held)
+            List<String> texts = chunks.stream().map(TextChunk::content).toList();
+            List<float[]> embeddings = embeddingPort.embedBatch(texts);
 
-        } catch (TextExtractionException e) {
-            log.warn("Text extraction failed for document {}: {}", documentId, e.getMessage());
-            tx.updateStatus(documentId, DocumentStatus.FAILED, "Text extraction failed: " + e.getMessage());
-        } catch (EmbeddingApiException e) {
-            log.error("Embedding API failed for document {}: {}", documentId, e.getMessage());
-            tx.updateStatus(documentId, DocumentStatus.FAILED, "Embedding service error: " + e.getMessage());
-        } catch (Exception e) {
-            log.error("Unexpected ingestion failure for document {}", documentId, e);
-            tx.updateStatus(documentId, DocumentStatus.FAILED, "Unexpected processing error");
+            // Stage 5 — Persist chunks + transition: PROCESSING → INDEXED (commit)
+            transactions.persistChunksAndMarkIndexed(tenantId, documentId, chunks, embeddings);
+
+            log.info("Ingestion completed [documentId={}, chunks={}]", documentId, chunks.size());
+
+        } catch (Exception ex) {
+            // Catch-all: transition to FAILED so the document is never stuck in PROCESSING.
+            // Error message is stored for operator visibility — not exposed to clients.
+            log.error("Ingestion failed [documentId={}]: {}", documentId, ex.getMessage(), ex);
+            transactions.markFailed(tenantId, documentId, truncate(ex.getMessage()));
         }
+    }
+
+    private String truncate(String message) {
+        if (message == null) return "Unknown error";
+        return message.length() > 500 ? message.substring(0, 500) : message;
     }
 }

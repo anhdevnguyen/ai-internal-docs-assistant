@@ -17,13 +17,26 @@ spring:
   flyway:
     enabled: true
 
+  # Reject oversized uploads at the servlet layer before hitting application code
+  servlet:
+    multipart:
+      max-file-size: ${STORAGE_MAX_FILE_MB:50}MB
+      max-request-size: ${STORAGE_MAX_FILE_MB:50}MB
+
+  # Allow @Async methods to run on a managed thread pool
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 16
+        queue-capacity: 100
+      thread-name-prefix: ingestion-
+
 server:
   port: ${SERVER_PORT:8080}
 
 app:
   jwt:
-    # Must be Base64-encoded secret, minimum 256 bits for HS256
-    # Generate: openssl rand -base64 32
     access-token-secret: ${JWT_ACCESS_SECRET:u4H5lW5l3pze23eYpu88jTKXgjz5cf395WXXOfQiSAZ}
     access-token-ttl: ${JWT_ACCESS_TTL:15m}
     refresh-token-ttl: ${JWT_REFRESH_TTL:7d}
@@ -36,11 +49,12 @@ app:
       - application/pdf
       - application/vnd.openxmlformats-officedocument.wordprocessingml.document
       - text/plain
-    chunking:
-      chunk-size-tokens: ${CHUNKING_CHUNK_SIZE:512}
-      overlap-tokens: ${CHUNKING_OVERLAP:50}
-    ai:
-      openai-api-key: ${OPENAI_API_KEY:}
-      embedding-model: text-embedding-3-small
-      embedding-batch-size: 100
-      base-url: https://api.openai.com/v1
+  # chunking and ai were previously nested under app.storage — incorrect binding
+  chunking:
+    chunk-size-tokens: ${CHUNKING_CHUNK_SIZE:512}
+    overlap-tokens: ${CHUNKING_OVERLAP:50}
+  ai:
+    openai-api-key: ${OPENAI_API_KEY:}
+    embedding-model: text-embedding-3-small
+    embedding-batch-size: 20
+    base-url: https://api.openai.com/v1

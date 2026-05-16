@@ -5,89 +5,75 @@ import com.vanhdev.backend.ingestion.domain.TextChunk;
 import com.vanhdev.backend.shared.config.ChunkingProperties;
 import org.springframework.stereotype.Component;
 
-import java.text.BreakIterator;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
-/**
- * Splits text by sentences, accumulates sentences until chunkSizeTokens is reached,
- * then carries the last overlapTokens worth of content into the next chunk.
- *
- * Sentence-aware splitting avoids cutting mid-sentence, which degrades retrieval quality.
- * Overlap prevents losing context at chunk boundaries.
- */
 @Component
 public class FixedSizeChunkingStrategy implements ChunkingStrategy {
 
-    // 1 token ≈ 4 characters — acceptable approximation for phase 2.
-    // Phase 3: replace with jtokkit for exact OpenAI tokenization.
-    private static final double CHARS_PER_TOKEN = 4.0;
+    // Approximation: 1 token ≈ 4 characters (OpenAI tokenizer heuristic for English).
+    // A proper cl100k tokenizer would be accurate but adds latency; this is acceptable
+    // for chunk boundary estimation — exact token counts are not required for ANN search.
+    private static final int CHARS_PER_TOKEN = 4;
 
-    private final ChunkingProperties props;
+    private final int chunkSizeChars;
+    private final int overlapChars;
 
     public FixedSizeChunkingStrategy(ChunkingProperties props) {
-        this.props = props;
+        this.chunkSizeChars = props.chunkSizeTokens() * CHARS_PER_TOKEN;
+        this.overlapChars = props.overlapTokens() * CHARS_PER_TOKEN;
     }
 
     @Override
     public List<TextChunk> chunk(String text) {
-        List<String> sentences = splitIntoSentences(text);
-        List<TextChunk> chunks = new ArrayList<>();
-        List<String> window = new ArrayList<>();
-        int windowTokens = 0;
-        int chunkIndex = 0;
-
-        for (String sentence : sentences) {
-            int sentenceTokens = estimateTokens(sentence);
-
-            if (windowTokens + sentenceTokens > props.chunkSizeTokens() && !window.isEmpty()) {
-                chunks.add(buildChunk(chunkIndex++, window, windowTokens));
-                List<String> overlap = buildOverlapWindow(window);
-                window = overlap;
-                windowTokens = window.stream().mapToInt(this::estimateTokens).sum();
-            }
-
-            window.add(sentence);
-            windowTokens += sentenceTokens;
+        if (text == null || text.isBlank()) {
+            return List.of();
         }
 
-        if (!window.isEmpty()) {
-            chunks.add(buildChunk(chunkIndex, window, windowTokens));
+        List<TextChunk> chunks = new ArrayList<>();
+        int start = 0;
+        int index = 0;
+
+        while (start < text.length()) {
+            int end = Math.min(start + chunkSizeChars, text.length());
+
+            // Prefer splitting at a paragraph/sentence boundary within the last 20%
+            // of the window rather than cutting mid-word — improves embedding quality.
+            if (end < text.length()) {
+                int boundarySearch = Math.max(start + (chunkSizeChars * 4 / 5), start + 1);
+                int boundary = findSplitBoundary(text, boundarySearch, end);
+                if (boundary > start) {
+                    end = boundary;
+                }
+            }
+
+            String content = text.substring(start, end).strip();
+            if (!content.isBlank()) {
+                int estimatedTokens = (int) Math.ceil((double) content.length() / CHARS_PER_TOKEN);
+                chunks.add(new TextChunk(index++, content, estimatedTokens));
+            }
+
+            // Overlap ensures sentences straddling a chunk boundary are captured by both chunks.
+            start = end - overlapChars;
+            if (start <= 0 || start >= text.length()) break;
         }
 
         return chunks;
     }
 
-    private List<String> splitIntoSentences(String text) {
-        BreakIterator boundary = BreakIterator.getSentenceInstance(Locale.US);
-        boundary.setText(text);
-        List<String> sentences = new ArrayList<>();
-        int start = boundary.first();
-        for (int end = boundary.next(); end != BreakIterator.DONE; start = end, end = boundary.next()) {
-            String sentence = text.substring(start, end).strip();
-            if (!sentence.isBlank()) {
-                sentences.add(sentence);
+    // Search backwards from `end` for the last paragraph or sentence boundary
+    private int findSplitBoundary(String text, int searchFrom, int end) {
+        // Prefer paragraph break
+        int paragraphBreak = text.lastIndexOf("\n\n", end);
+        if (paragraphBreak >= searchFrom) return paragraphBreak + 2;
+
+        // Fall back to sentence end
+        for (int i = end - 1; i >= searchFrom; i--) {
+            char c = text.charAt(i);
+            if ((c == '.' || c == '!' || c == '?') && i + 1 < text.length() && text.charAt(i + 1) == ' ') {
+                return i + 1;
             }
         }
-        return sentences;
-    }
-
-    private List<String> buildOverlapWindow(List<String> window) {
-        List<String> overlap = new ArrayList<>();
-        int tokens = 0;
-        for (int i = window.size() - 1; i >= 0 && tokens < props.overlapTokens(); i--) {
-            overlap.addFirst(window.get(i));
-            tokens += estimateTokens(window.get(i));
-        }
-        return overlap;
-    }
-
-    private TextChunk buildChunk(int index, List<String> sentences, int estimatedTokens) {
-        return new TextChunk(index, String.join(" ", sentences), estimatedTokens);
-    }
-
-    private int estimateTokens(String text) {
-        return Math.max(1, (int) (text.length() / CHARS_PER_TOKEN));
+        return end;
     }
 }

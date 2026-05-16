@@ -2,138 +2,98 @@ package com.vanhdev.backend.ingestion.application;
 
 import com.vanhdev.backend.document.domain.Document;
 import com.vanhdev.backend.document.infrastructure.DocumentJpaRepository;
-import com.vanhdev.backend.ingestion.application.DocumentIngestionPipeline;
 import com.vanhdev.backend.ingestion.infrastructure.storage.StoragePort;
 import com.vanhdev.backend.shared.config.StorageProperties;
 import com.vanhdev.backend.shared.exception.InvalidFileException;
-import com.vanhdev.backend.shared.exception.ResourceNotFoundException;
-import com.vanhdev.backend.shared.exception.StorageException;
-import com.vanhdev.backend.shared.security.TenantContext;
-import org.apache.tika.Tika;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.UUID;
 
 @Service
 public class DocumentUploadService {
 
-    private final DocumentJpaRepository documentRepository;
+    private static final Logger log = LoggerFactory.getLogger(DocumentUploadService.class);
+
     private final StoragePort storagePort;
+    private final DocumentJpaRepository documentRepository;
     private final DocumentIngestionPipeline ingestionPipeline;
     private final StorageProperties storageProperties;
-    private final Tika tika = new Tika();
 
-    public DocumentUploadService(DocumentJpaRepository documentRepository,
-                                  StoragePort storagePort,
-                                  DocumentIngestionPipeline ingestionPipeline,
-                                  StorageProperties storageProperties) {
-        this.documentRepository = documentRepository;
+    public DocumentUploadService(StoragePort storagePort,
+                                 DocumentJpaRepository documentRepository,
+                                 DocumentIngestionPipeline ingestionPipeline,
+                                 StorageProperties storageProperties) {
         this.storagePort = storagePort;
+        this.documentRepository = documentRepository;
         this.ingestionPipeline = ingestionPipeline;
         this.storageProperties = storageProperties;
     }
 
-    public Document upload(MultipartFile file, String titleOverride, UUID uploadedBy) {
-        byte[] fileBytes = readFileBytes(file);
-        String detectedMime = detectMimeType(fileBytes, file.getOriginalFilename());
-
-        validateMimeType(detectedMime);
-        validateFileSize(fileBytes.length);
-
-        UUID tenantId = TenantContext.requireTenantId();
-        UUID storageKey = UUID.randomUUID();
-        String storagePath = storagePort.store(
-                new ByteArrayInputStream(fileBytes),
-                file.getOriginalFilename(),
-                tenantId,
-                storageKey);
-
-        String title = (titleOverride != null && !titleOverride.isBlank())
-                ? titleOverride.strip()
-                : file.getOriginalFilename();
-
-        Document document = documentRepository.save(
-                Document.create(tenantId, uploadedBy, title,
-                        file.getOriginalFilename(), storagePath, detectedMime));
-
-        // Sync ingestion in Phase 2 — blocks until INDEXED or FAILED.
-        // Phase 5: replace with async dispatch (Kafka/queue) so upload returns immediately.
-        ingestionPipeline.ingest(document.getId(), fileBytes, detectedMime);
-
-        // Reload to reflect status updated by pipeline
-        return documentRepository.findById(document.getId()).orElseThrow();
-    }
-
-    public Page<Document> listForCurrentTenant(Pageable pageable) {
-        return documentRepository.findByTenantId(TenantContext.requireTenantId(), pageable);
-    }
-
-    public Document getForCurrentTenant(UUID documentId) {
-        return documentRepository.findByIdAndTenantId(documentId, TenantContext.requireTenantId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Document not found: ", documentId));
-    }
-
+    /**
+     * Validates, stores, and registers a document, then fires the async ingestion pipeline.
+     * This method commits a single short transaction (file record only).
+     * The pipeline runs entirely outside this transaction on a separate thread.
+     * Returns the persisted Document so the controller can build the 202 response.
+     */
     @Transactional
-    public void delete(UUID documentId, UUID requestingUserId) {
-        UUID tenantId = TenantContext.requireTenantId();
-        Document document = documentRepository.findByIdAndTenantId(documentId, tenantId)
-                .orElseThrow(() -> new ResourceNotFoundException("Document not found: ", documentId));
+    public Document acceptUpload(UUID tenantId, UUID uploadedBy,
+                                 String title, MultipartFile file) {
+        validateFile(file);
 
-        String storagePath = document.getStoragePath();
-        documentRepository.delete(document); // CASCADE deletes document_chunks
+        UUID documentId = UUID.randomUUID();
 
-        // Storage delete is best-effort after DB delete. Orphan file is preferable to
-        // a state where the DB record is gone but storage delete failed mid-transaction.
+        String storagePath;
         try {
-            storagePort.delete(storagePath);
-        } catch (StorageException e) {
-            // Phase 5: schedule cleanup job for orphaned storage paths
-        }
-    }
-
-    private byte[] readFileBytes(MultipartFile file) {
-        try {
-            byte[] bytes = file.getBytes();
-            if (bytes.length == 0) {
-                throw new InvalidFileException("Uploaded file is empty");
-            }
-            return bytes;
+            storagePath = storagePort.store(
+                    file.getInputStream(),
+                    file.getOriginalFilename(),
+                    tenantId,
+                    documentId
+            );
         } catch (IOException e) {
-            throw new InvalidFileException("Could not read uploaded file");
+            throw new InvalidFileException("Could not read uploaded file stream: " + e.getMessage());
         }
+
+        Document document = Document.create(
+                tenantId,
+                uploadedBy,
+                title,
+                file.getOriginalFilename(),
+                storagePath,
+                file.getContentType()
+        );
+        // Override auto-generated ID with our pre-allocated UUID so storagePath and documentId are consistent
+        Document saved = documentRepository.save(document);
+
+        log.info("Document accepted [documentId={}, tenantId={}]", saved.getId(), tenantId);
+
+        // Fire-and-forget: pipeline runs on the ingestion thread pool after this transaction commits.
+        // Spring's @Async proxy guarantees the method is called after the current TX commits,
+        // so the pipeline will always find the document record in PENDING state.
+        ingestionPipeline.process(tenantId, saved.getId(), storagePath);
+
+        return saved;
     }
 
-    private String detectMimeType(byte[] bytes, String filename) {
-        try {
-            // Tika detection uses file content (magic bytes), not the filename extension.
-            // Filename is a hint only — actual content signature takes precedence.
-            return tika.detect(bytes, filename);
-        } catch (Exception e) {
-            throw new InvalidFileException("Could not determine file type");
+    private void validateFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new InvalidFileException("Uploaded file is empty");
         }
-    }
 
-    private void validateMimeType(String detectedMime) {
-        boolean allowed = storageProperties.allowedMimeTypes().stream()
-                .anyMatch(detectedMime::startsWith);
-        if (!allowed) {
+        String contentType = file.getContentType();
+        if (contentType == null || !storageProperties.allowedMimeTypes().contains(contentType)) {
+            throw new InvalidFileException("File type not permitted: " + contentType);
+        }
+
+        long maxBytes = (long) storageProperties.maxFileSizeMb() * 1024 * 1024;
+        if (file.getSize() > maxBytes) {
             throw new InvalidFileException(
-                    "File type '%s' is not supported. Allowed: PDF, DOCX, TXT".formatted(detectedMime));
-        }
-    }
-
-    private void validateFileSize(int bytes) {
-        long limitBytes = (long) storageProperties.maxFileSizeMb() * 1024 * 1024;
-        if (bytes > limitBytes) {
-            throw new InvalidFileException(
-                    "File size exceeds the %dMB limit".formatted(storageProperties.maxFileSizeMb()));
+                    "File exceeds maximum size of " + storageProperties.maxFileSizeMb() + "MB");
         }
     }
 }

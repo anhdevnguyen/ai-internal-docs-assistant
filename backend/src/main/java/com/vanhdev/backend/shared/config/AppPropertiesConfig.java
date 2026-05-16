@@ -2,7 +2,13 @@ package com.vanhdev.backend.shared.config;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 @Configuration
-@EnableConfigurationProperties({StorageProperties.class, ChunkingProperties.class, AiProperties.class})
+@EnableAsync
+@EnableConfigurationProperties({
+        AiProperties.class,
+        ChunkingProperties.class,
+        StorageProperties.class
+})
 public class AppPropertiesConfig {}

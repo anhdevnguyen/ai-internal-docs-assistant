@@ -5,115 +5,90 @@ import com.vanhdev.backend.shared.config.AiProperties;
 import com.vanhdev.backend.shared.exception.EmbeddingApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientResponseException;
 
-import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 @Component
 public class OpenAiEmbeddingAdapter implements EmbeddingPort {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiEmbeddingAdapter.class);
+
     private static final int MAX_RETRIES = 3;
-    private static final long INITIAL_BACKOFF_MS = 1_000;
+    private static final long BASE_BACKOFF_MS = 1_000L;
 
     private final RestClient restClient;
-    private final AiProperties aiProperties;
+    private final String embeddingModel;
+    private final int batchSize;
 
-    public OpenAiEmbeddingAdapter(RestClient.Builder restClientBuilder, AiProperties aiProperties) {
-        this.aiProperties = aiProperties;
-        this.restClient = restClientBuilder
-                .baseUrl(aiProperties.baseUrl())
-                .defaultHeader("Authorization", "Bearer " + aiProperties.openaiApiKey())
+    public OpenAiEmbeddingAdapter(AiProperties props) {
+        this.embeddingModel = props.embeddingModel();
+        this.batchSize = props.embeddingBatchSize();
+        this.restClient = RestClient.builder()
+                .baseUrl(props.baseUrl())
+                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + props.openaiApiKey())
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .build();
     }
 
     @Override
     public List<float[]> embedBatch(List<String> texts) {
-        int batchSize = aiProperties.embeddingBatchSize();
-        List<float[]> result = new ArrayList<>(texts.size());
+        List<float[]> results = new ArrayList<>(texts.size());
 
-        for (int i = 0; i < texts.size(); i += batchSize) {
-            List<String> batch = texts.subList(i, Math.min(i + batchSize, texts.size()));
-            result.addAll(callWithRetry(batch));
+        // Batch into fixed-size windows to respect OpenAI rate limits
+        for (int offset = 0; offset < texts.size(); offset += batchSize) {
+            List<String> batch = texts.subList(offset, Math.min(offset + batchSize, texts.size()));
+            List<float[]> batchResult = embedWithRetry(batch, 0);
+            results.addAll(batchResult);
         }
 
-        return result;
+        return results;
     }
 
-    private List<float[]> callWithRetry(List<String> batch) {
-        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
-            try {
-                return callApi(batch);
-            } catch (EmbeddingApiException e) {
-                if (e.isRateLimited() && attempt < MAX_RETRIES - 1) {
-                    long backoffMs = INITIAL_BACKOFF_MS * (1L << attempt); // exponential: 1s, 2s, 4s
-                    log.warn("OpenAI rate limit hit, backing off {}ms (attempt {}/{})", backoffMs, attempt + 1, MAX_RETRIES);
-                    sleep(Duration.ofMillis(backoffMs));
-                } else {
-                    throw e;
-                }
-            }
-        }
-        throw new EmbeddingApiException("Max retries exceeded calling OpenAI embeddings API", false);
-    }
-
-    private List<float[]> callApi(List<String> texts) {
+    private List<float[]> embedWithRetry(List<String> batch, int attempt) {
         try {
             EmbeddingApiResponse response = restClient.post()
                     .uri("/embeddings")
-                    .body(new EmbeddingApiRequest(aiProperties.embeddingModel(), texts))
+                    .body(new EmbeddingApiRequest(batch, embeddingModel))
                     .retrieve()
                     .body(EmbeddingApiResponse.class);
 
-            if (response == null || response.data() == null) {
-                throw new EmbeddingApiException("Empty response from OpenAI embeddings API", false);
+            if (response == null || response.data() == null || response.data().size() != batch.size()) {
+                throw new EmbeddingApiException("OpenAI returned unexpected embedding response shape");
             }
 
-            // Sort by index to guarantee ordering matches input order
+            // OpenAI returns items ordered by their `index` field, not insertion order.
+            // Sort by index to guarantee alignment with the input list.
             return response.data().stream()
-                    .sorted(Comparator.comparingInt(EmbeddingDataItem::index))
-                    .map(item -> toFloatArray(item.embedding()))
+                    .sorted(java.util.Comparator.comparingInt(EmbeddingDataItem::index))
+                    .map(EmbeddingDataItem::embedding)
                     .toList();
 
-        } catch (RestClientResponseException e) {
-            if (e.getStatusCode().value() == 429) {
-                throw new EmbeddingApiException("OpenAI rate limit (429)", true);
+        } catch (EmbeddingApiException e) {
+            throw e;
+        } catch (Exception e) {
+            if (attempt >= MAX_RETRIES) {
+                throw new EmbeddingApiException("Embedding API failed after " + MAX_RETRIES + " retries: " + e.getMessage(), e);
             }
-            throw new EmbeddingApiException(
-                    "OpenAI API error %d: %s".formatted(e.getStatusCode().value(), e.getResponseBodyAsString()),
-                    false);
+            long backoff = BASE_BACKOFF_MS * (1L << attempt); // exponential: 1s, 2s, 4s
+            log.warn("Embedding API attempt {} failed, retrying in {}ms: {}", attempt + 1, backoff, e.getMessage());
+            try {
+                Thread.sleep(backoff);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new EmbeddingApiException("Embedding retry interrupted", ie);
+            }
+            return embedWithRetry(batch, attempt + 1);
         }
     }
 
-    private float[] toFloatArray(List<Double> doubles) {
-        float[] arr = new float[doubles.size()];
-        for (int i = 0; i < doubles.size(); i++) {
-            arr[i] = doubles.get(i).floatValue();
-        }
-        return arr;
-    }
+    record EmbeddingApiRequest(List<String> input, String model) {}
 
-    private void sleep(Duration duration) {
-        try {
-            Thread.sleep(duration.toMillis());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new EmbeddingApiException("Interrupted during retry backoff", false);
-        }
-    }
+    record EmbeddingApiResponse(List<EmbeddingDataItem> data) {}
 
-    // --- API contract types (private — not part of the domain) ---
-
-    private record EmbeddingApiRequest(String model, List<String> input) {}
-
-    private record EmbeddingDataItem(
-            @JsonProperty("embedding") List<Double> embedding,
-            @JsonProperty("index") int index) {}
-
-    private record EmbeddingApiResponse(@JsonProperty("data") List<EmbeddingDataItem> data) {}
+    record EmbeddingDataItem(int index, @JsonProperty("embedding") float[] embedding) {}
 }

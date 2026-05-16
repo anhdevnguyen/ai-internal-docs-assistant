@@ -1,70 +1,82 @@
 package com.vanhdev.backend.document.api;
 
 import com.vanhdev.backend.document.api.dto.DocumentResponse;
-import com.vanhdev.backend.document.api.dto.DocumentStatusResponse;
+import com.vanhdev.backend.document.domain.Document;
+import com.vanhdev.backend.document.infrastructure.DocumentJpaRepository;
 import com.vanhdev.backend.ingestion.application.DocumentUploadService;
 import com.vanhdev.backend.shared.api.ApiResponse;
 import com.vanhdev.backend.shared.api.PagedResponse;
+import com.vanhdev.backend.shared.exception.ResourceNotFoundException;
 import com.vanhdev.backend.shared.security.SecurityUtils;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/documents")
+@RequestMapping("/api/v1/documents")
+@Validated
 public class DocumentController {
 
-    private final DocumentUploadService documentUploadService;
+    private final DocumentUploadService uploadService;
+    private final DocumentJpaRepository documentRepository;
 
-    public DocumentController(DocumentUploadService documentUploadService) {
-        this.documentUploadService = documentUploadService;
+    public DocumentController(DocumentUploadService uploadService,
+                              DocumentJpaRepository documentRepository) {
+        this.uploadService = uploadService;
+        this.documentRepository = documentRepository;
     }
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @ResponseStatus(HttpStatus.CREATED)
+    /**
+     * Accepts a document upload and immediately returns 202 Accepted.
+     * Ingestion runs asynchronously — clients poll GET /documents/{id} for status.
+     */
+    @PostMapping(consumes = "multipart/form-data")
+    @ResponseStatus(HttpStatus.ACCEPTED)
     public ApiResponse<DocumentResponse> upload(
             @RequestPart("file") MultipartFile file,
-            @RequestPart(value = "title", required = false) String title) {
-
-        UUID userId = SecurityUtils.requireCurrentUserId();
-        DocumentResponse response = DocumentResponse.from(
-                documentUploadService.upload(file, title, userId));
-        return ApiResponse.ok(response);
+            @RequestPart("title")
+            @NotBlank(message = "title is required")
+            @Size(max = 500, message = "title must not exceed 500 characters")
+            String title
+    ) {
+        var principal = SecurityUtils.requireAuthenticatedUser();
+        Document document = uploadService.acceptUpload(
+                principal.tenantId(),
+                principal.userId(),
+                title.strip(),
+                file
+        );
+        return ApiResponse.ok(DocumentResponse.from(document));
     }
 
     @GetMapping
     public ApiResponse<PagedResponse<DocumentResponse>> list(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-
-        // Caps page size to prevent abusive queries
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        UUID tenantId = SecurityUtils.requireCurrentTenantId();
+        // Cap page size to prevent abusive queries
         int cappedSize = Math.min(size, 100);
-        PageRequest pageable = PageRequest.of(page, cappedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
-
-        return ApiResponse.ok(PagedResponse.from(
-                documentUploadService.listForCurrentTenant(pageable),
-                DocumentResponse::from));
+        Page<Document> pageResult = documentRepository.findByTenantId(
+                tenantId,
+                PageRequest.of(page, cappedSize, Sort.by(Sort.Direction.DESC, "createdAt"))
+        );
+        return ApiResponse.ok(PagedResponse.from(pageResult.map(DocumentResponse::from)));
     }
 
     @GetMapping("/{id}")
     public ApiResponse<DocumentResponse> getById(@PathVariable UUID id) {
-        return ApiResponse.ok(DocumentResponse.from(documentUploadService.getForCurrentTenant(id)));
-    }
-
-    @GetMapping("/{id}/status")
-    public ApiResponse<DocumentStatusResponse> getStatus(@PathVariable UUID id) {
-        return ApiResponse.ok(DocumentStatusResponse.from(documentUploadService.getForCurrentTenant(id)));
-    }
-
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID id) {
-        UUID userId = SecurityUtils.requireCurrentUserId();
-        documentUploadService.delete(id, userId);
+        UUID tenantId = SecurityUtils.requireCurrentTenantId();
+        Document document = documentRepository.findByIdAndTenantId(id, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document not found: ", id));
+        return ApiResponse.ok(DocumentResponse.from(document));
     }
 }

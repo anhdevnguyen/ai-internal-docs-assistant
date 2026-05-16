@@ -1,7 +1,6 @@
 package com.vanhdev.backend.auth.application;
 
 import com.vanhdev.backend.auth.domain.Role;
-import com.vanhdev.backend.auth.domain.Tenant;
 import com.vanhdev.backend.auth.domain.User;
 import com.vanhdev.backend.auth.infrastructure.TenantRepository;
 import com.vanhdev.backend.auth.infrastructure.UserRepository;
