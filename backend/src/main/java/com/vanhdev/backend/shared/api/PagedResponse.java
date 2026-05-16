@@ -12,6 +12,16 @@ public record PagedResponse<T>(
         int currentPage,
         int pageSize
 ) {
+    public static <T> PagedResponse<T> from(Page<T> page) {
+        return new PagedResponse<>(
+                page.getContent(),
+                page.getTotalElements(),
+                page.getTotalPages(),
+                page.getNumber(),
+                page.getSize()
+        );
+    }
+
     public static <S, T> PagedResponse<T> from(Page<S> page, Function<S, T> mapper) {
         return new PagedResponse<>(
                 page.getContent().stream().map(mapper).toList(),
