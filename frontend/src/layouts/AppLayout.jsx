@@ -22,8 +22,15 @@ export default function AppLayout({ children }) {
 
         <nav className="app-nav">
           <NavLink
-            to="/"
-            end
+            to="/chat"
+            className={({ isActive }) => `app-nav-item${isActive ? ' active' : ''}`}
+          >
+            <ChatIcon />
+            Chat
+          </NavLink>
+
+          <NavLink
+            to="/documents"
             className={({ isActive }) => `app-nav-item${isActive ? ' active' : ''}`}
           >
             <DocsIcon />
@@ -63,6 +70,13 @@ const LogoIcon = () => (
       stroke="currentColor" strokeWidth="1.2" fill="none"/>
     <path d="M10.5 1v3h3" stroke="currentColor" strokeWidth="1.2"/>
     <path d="M5 7.5h5M5 9.5h3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+  </svg>
+)
+
+const ChatIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M1.5 2.5A1 1 0 012.5 1.5h9a1 1 0 011 1v6a1 1 0 01-1 1H8L5 12.5V8.5H2.5a1 1 0 01-1-1v-5z"
+      stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinejoin="round"/>
   </svg>
 )
 

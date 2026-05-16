@@ -6,6 +6,7 @@ import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import DocumentsPage from './pages/DocumentsPage'
 import DocumentDetailPage from './pages/DocumentDetailPage'
+import ChatPage from './pages/ChatPage'
 
 export default function App() {
   return (
@@ -16,12 +17,14 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
 
-          {/* Protected app routes */}
+          {/* Redirect root to /chat — the core product feature */}
+          <Route path="/" element={<Navigate to="/chat" replace />} />
+
           <Route
-            path="/"
+            path="/chat"
             element={
               <ProtectedRoute>
-                <DashboardPage />
+                <ChatPage />
               </ProtectedRoute>
             }
           />
@@ -44,7 +47,6 @@ export default function App() {
             }
           />
 
-          {/* Admin-only routes */}
           <Route
             path="/admin/*"
             element={
@@ -54,7 +56,7 @@ export default function App() {
             }
           />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/chat" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
