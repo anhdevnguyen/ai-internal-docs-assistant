@@ -4,6 +4,8 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
+import DocumentsPage from './pages/DocumentsPage'
+import DocumentDetailPage from './pages/DocumentDetailPage'
 
 export default function App() {
   return (
@@ -24,7 +26,25 @@ export default function App() {
             }
           />
 
-          {/* Admin-only routes — requiredRole guard */}
+          <Route
+            path="/documents"
+            element={
+              <ProtectedRoute>
+                <DocumentsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/documents/:id"
+            element={
+              <ProtectedRoute>
+                <DocumentDetailPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin-only routes */}
           <Route
             path="/admin/*"
             element={
