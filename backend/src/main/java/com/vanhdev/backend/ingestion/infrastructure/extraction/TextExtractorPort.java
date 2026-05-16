@@ -2,8 +2,8 @@ package com.vanhdev.backend.ingestion.infrastructure.extraction;
 
 public interface TextExtractorPort {
     /**
-     * Extracts plain text from document bytes.
-     * Throws TextExtractionException for scanned PDFs, corrupt files, or insufficient content.
+     * Reads file bytes from the given storage path and returns extracted plain text.
+     * Implementations must not log raw file content.
      */
-    String extract(byte[] content, String mimeType);
+    String extract(String storagePath);
 }

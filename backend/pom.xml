@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<version>3.5.14</version>
-		<relativePath/> <!-- lookup parent from repository -->
+		<relativePath/>
 	</parent>
 	<groupId>com.vanhdev</groupId>
 	<artifactId>backend</artifactId>
@@ -14,22 +14,45 @@
 	<name/>
 	<description/>
 	<url/>
-	<licenses>
-		<license/>
-	</licenses>
-	<developers>
-		<developer/>
-	</developers>
-	<scm>
-		<connection/>
-		<developerConnection/>
-		<tag/>
-		<url/>
-	</scm>
+	<licenses><license/></licenses>
+	<developers><developer/></developers>
+	<scm><connection/><developerConnection/><tag/><url/></scm>
+
 	<properties>
 		<java.version>21</java.version>
 		<jjwt.version>0.12.6</jjwt.version>
+		<!--
+		  CVE-2025-66516 (CVSS 10.0): XXE injection via crafted XFA content in PDFs.
+		  The fix resides in tika-core — upgrading tika-parser-pdf-module alone is NOT sufficient.
+		  Both tika-core AND tika-parsers-standard-package must be >= 3.2.2.
+		  Tika 2.x branch has no backport. Migration to 3.x is required.
+		-->
+		<tika.version>3.2.2</tika.version>
+		<!--
+		  Force BouncyCastle 1.80 to resolve CVE-2024-29857, CVE-2024-30172, CVE-2024-34447
+		  (CVSS 7.5) in bcprov-jdk18on:1.77 pulled transitively via tika-parser-pdf-module.
+		  This override ensures the safe version is used regardless of Tika's own dependency
+		  resolution. Remove this override once Tika declares a dependency on BC >= 1.80.
+		-->
+		<bouncycastle.version>1.80</bouncycastle.version>
 	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<!-- Force BC version across all transitive pulls -->
+			<dependency>
+				<groupId>org.bouncycastle</groupId>
+				<artifactId>bcprov-jdk18on</artifactId>
+				<version>${bouncycastle.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.bouncycastle</groupId>
+				<artifactId>bcpkix-jdk18on</artifactId>
+				<version>${bouncycastle.version}</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
 	<dependencies>
 		<!-- Web & Core -->
 		<dependency>
@@ -72,15 +95,21 @@
 		<dependency>
 			<groupId>org.apache.tika</groupId>
 			<artifactId>tika-core</artifactId>
-			<version>2.9.2</version>
+			<version>${tika.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.tika</groupId>
 			<artifactId>tika-parsers-standard-package</artifactId>
-			<version>2.9.2</version>
+			<version>${tika.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>com.github.junrar</groupId>
+					<artifactId>junrar</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
-		<!-- JWT — using JJWT for explicit control over signing/validation -->
+		<!-- JWT -->
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>
 			<artifactId>jjwt-api</artifactId>
@@ -146,9 +175,7 @@
 					<execution>
 						<id>default-compile</id>
 						<phase>compile</phase>
-						<goals>
-							<goal>compile</goal>
-						</goals>
+						<goals><goal>compile</goal></goals>
 						<configuration>
 							<annotationProcessorPaths>
 								<path>
@@ -161,9 +188,7 @@
 					<execution>
 						<id>default-testCompile</id>
 						<phase>test-compile</phase>
-						<goals>
-							<goal>testCompile</goal>
-						</goals>
+						<goals><goal>testCompile</goal></goals>
 						<configuration>
 							<annotationProcessorPaths>
 								<path>
@@ -177,5 +202,4 @@
 			</plugin>
 		</plugins>
 	</build>
-
 </project>
