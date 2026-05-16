@@ -1,6 +1,8 @@
 package com.vanhdev.backend.shared.exception;
 
 import com.vanhdev.backend.shared.api.ApiResponse;
+import com.vanhdev.backend.shared.exception.ProviderRateLimitException;
+import com.vanhdev.backend.shared.exception.LlmCompletionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -63,5 +65,19 @@ public class GlobalExceptionHandler {
         // Log full stacktrace for unexpected errors — never leak internals to client
         log.error("Unhandled exception", ex);
         return ApiResponse.fail("INTERNAL_ERROR", "An unexpected error occurred");
+    }
+
+    @ExceptionHandler(ProviderRateLimitException.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    public ApiResponse<Void> handleProviderRateLimit(ProviderRateLimitException ex) {
+        log.warn("AI provider rate limit hit: {}", ex.getMessage());
+        return ApiResponse.fail("PROVIDER_RATE_LIMIT", "AI service is temporarily unavailable. Please try again in a moment.");
+    }
+
+    @ExceptionHandler(LlmCompletionException.class)
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    public ApiResponse<Void> handleLlmCompletion(LlmCompletionException ex) {
+        log.error("LLM completion failed: {}", ex.getMessage(), ex);
+        return ApiResponse.fail("LLM_COMPLETION_FAILED", "Failed to generate AI response. Please try again.");
     }
 }
