@@ -4,9 +4,7 @@ import com.vanhdev.backend.shared.exception.TextExtractionException;
 import org.apache.tika.Tika;
 import org.apache.tika.exception.TikaException;
 import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.TikaCoreProperties;
 import org.springframework.stereotype.Component;
-import org.xml.sax.SAXException;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -24,7 +22,7 @@ public class TikaTextExtractorAdapter implements TextExtractorPort {
     @Override
     public String extract(byte[] content, String mimeType) {
         Metadata metadata = new Metadata();
-        metadata.set(TikaCoreProperties.CONTENT_TYPE_OVERRIDE, mimeType);
+        metadata.set(Metadata.CONTENT_TYPE, mimeType);
 
         try {
             String text = tika.parseToString(new ByteArrayInputStream(content), metadata, MAX_CONTENT_CHARS);
@@ -37,7 +35,7 @@ public class TikaTextExtractorAdapter implements TextExtractorPort {
             }
 
             return trimmed;
-        } catch (TikaException | SAXException e) {
+        } catch (TikaException e) {
             throw new TextExtractionException("Document is corrupt or format is unsupported: " + e.getMessage(), e);
         } catch (IOException e) {
             throw new TextExtractionException("IO error during text extraction", e);

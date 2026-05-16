@@ -2,7 +2,7 @@ package com.vanhdev.backend.document.api;
 
 import com.vanhdev.backend.document.api.dto.DocumentResponse;
 import com.vanhdev.backend.document.api.dto.DocumentStatusResponse;
-import com.vanhdev.backend.document.application.DocumentUploadService;
+import com.vanhdev.backend.ingestion.application.DocumentUploadService;
 import com.vanhdev.backend.shared.api.ApiResponse;
 import com.vanhdev.backend.shared.api.PagedResponse;
 import com.vanhdev.backend.shared.security.SecurityUtils;

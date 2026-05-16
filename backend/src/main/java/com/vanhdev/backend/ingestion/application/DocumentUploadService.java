@@ -77,14 +77,14 @@ public class DocumentUploadService {
     public Document getForCurrentTenant(UUID documentId) {
         return documentRepository.findByIdAndTenantId(documentId, TenantContext.requireTenantId())
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Document not found: " + documentId));
+                        "Document not found: ", documentId));
     }
 
     @Transactional
     public void delete(UUID documentId, UUID requestingUserId) {
         UUID tenantId = TenantContext.requireTenantId();
         Document document = documentRepository.findByIdAndTenantId(documentId, tenantId)
-                .orElseThrow(() -> new ResourceNotFoundException("Document not found: " + documentId));
+                .orElseThrow(() -> new ResourceNotFoundException("Document not found: ", documentId));
 
         String storagePath = document.getStoragePath();
         documentRepository.delete(document); // CASCADE deletes document_chunks

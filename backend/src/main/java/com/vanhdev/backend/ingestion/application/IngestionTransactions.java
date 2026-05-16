@@ -32,7 +32,7 @@ class IngestionTransactions {
     @Transactional
     public void updateStatus(UUID documentId, DocumentStatus status, String errorMessage) {
         Document doc = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Document not found: " + documentId));
+                .orElseThrow(() -> new ResourceNotFoundException("Document not found: ", documentId));
         if (status == DocumentStatus.FAILED) {
             doc.markAsFailed(errorMessage);
         } else if (status == DocumentStatus.PROCESSING) {
@@ -46,7 +46,7 @@ class IngestionTransactions {
                                              List<TextChunk> chunks, List<float[]> embeddings) {
         vectorChunkRepository.saveAll(tenantId, documentId, chunks, embeddings);
         Document doc = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Document not found: " + documentId));
+                .orElseThrow(() -> new ResourceNotFoundException("Document not found: ", documentId));
         doc.markAsIndexed();
         documentRepository.save(doc);
     }
