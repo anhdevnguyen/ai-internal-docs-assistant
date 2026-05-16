@@ -8,6 +8,8 @@ import UploadDropzone from '../components/documents/UploadDropzone'
 
 const PAGE_SIZE = 20
 
+const ACTIVE_STATUSES = new Set(['PENDING', 'PROCESSING'])
+
 function formatDate(iso) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('en-US', {
@@ -16,21 +18,21 @@ function formatDate(iso) {
 }
 
 export default function DocumentsPage() {
-  const [page, setPage]           = useState(0)
+  const [page, setPage]             = useState(0)
   const [showUpload, setShowUpload] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
   const queryClient = useQueryClient()
 
-  const { data, isLoading, isError } = useQuery({
+  const { data: pagedData, isLoading, isError } = useQuery({
     queryKey: ['documents', page],
+    // Unwrap Axios response → ApiResponse.data (the PagedResponse object)
+    // so consumers get { content, totalPages, totalElements } directly.
+    select: (res) => res.data.data,
     queryFn: () => documentApi.list(page, PAGE_SIZE),
-    // Keep polling while any document is still being ingested
+    refetchOnWindowFocus: true,
     refetchInterval: (query) => {
-      const docs = query.state.data?.data?.data?.content ?? []
-      const hasActiveIngestion = docs.some(
-        (d) => d.status === 'PENDING' || d.status === 'PROCESSING'
-      )
-      return hasActiveIngestion ? 3000 : false
+      const content = query.state.data?.content ?? []
+      return content.some((d) => ACTIVE_STATUSES.has(d.status)) ? 3000 : false
     },
   })
 
@@ -42,13 +44,14 @@ export default function DocumentsPage() {
     },
   })
 
-  const pagedData     = data?.data?.data
   const documents     = pagedData?.content ?? []
   const totalPages    = pagedData?.totalPages ?? 1
   const totalElements = pagedData?.totalElements ?? 0
 
   const handleUploaded = () => {
     setShowUpload(false)
+    // Immediate refetch so the new PENDING document appears without waiting for next poll
+    queryClient.invalidateQueries({ queryKey: ['documents', page] })
   }
 
   return (

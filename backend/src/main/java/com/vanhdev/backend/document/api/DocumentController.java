@@ -1,16 +1,13 @@
 package com.vanhdev.backend.document.api;
 
 import com.vanhdev.backend.document.api.dto.DocumentResponse;
-import com.vanhdev.backend.document.domain.Document;
-import com.vanhdev.backend.document.infrastructure.DocumentJpaRepository;
+import com.vanhdev.backend.document.application.DocumentQueryService;
 import com.vanhdev.backend.ingestion.application.DocumentUploadService;
 import com.vanhdev.backend.shared.api.ApiResponse;
 import com.vanhdev.backend.shared.api.PagedResponse;
-import com.vanhdev.backend.shared.exception.ResourceNotFoundException;
 import com.vanhdev.backend.shared.security.SecurityUtils;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -26,12 +23,12 @@ import java.util.UUID;
 public class DocumentController {
 
     private final DocumentUploadService uploadService;
-    private final DocumentJpaRepository documentRepository;
+    private final DocumentQueryService documentQueryService;
 
     public DocumentController(DocumentUploadService uploadService,
-                              DocumentJpaRepository documentRepository) {
+                              DocumentQueryService documentQueryService) {
         this.uploadService = uploadService;
-        this.documentRepository = documentRepository;
+        this.documentQueryService = documentQueryService;
     }
 
     /**
@@ -48,7 +45,7 @@ public class DocumentController {
             String title
     ) {
         var principal = SecurityUtils.requireAuthenticatedUser();
-        Document document = uploadService.acceptUpload(
+        var document = uploadService.acceptUpload(
                 principal.tenantId(),
                 principal.userId(),
                 title.strip(),
@@ -62,11 +59,9 @@ public class DocumentController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        UUID tenantId = SecurityUtils.requireCurrentTenantId();
         // Cap page size to prevent abusive queries
         int cappedSize = Math.min(size, 100);
-        Page<Document> pageResult = documentRepository.findByTenantId(
-                tenantId,
+        var pageResult = documentQueryService.listForCurrentTenant(
                 PageRequest.of(page, cappedSize, Sort.by(Sort.Direction.DESC, "createdAt"))
         );
         return ApiResponse.ok(PagedResponse.from(pageResult.map(DocumentResponse::from)));
@@ -74,9 +69,7 @@ public class DocumentController {
 
     @GetMapping("/{id}")
     public ApiResponse<DocumentResponse> getById(@PathVariable UUID id) {
-        UUID tenantId = SecurityUtils.requireCurrentTenantId();
-        Document document = documentRepository.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new ResourceNotFoundException("Document not found: ", id));
+        var document = documentQueryService.getByIdForCurrentTenant(id);
         return ApiResponse.ok(DocumentResponse.from(document));
     }
 }

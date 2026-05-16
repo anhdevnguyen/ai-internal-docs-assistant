@@ -4,6 +4,7 @@ import { documentApi } from '../../api/documentApi'
 
 const ACCEPTED_EXTENSIONS = ['.pdf', '.docx', '.txt']
 
+// Mirror backend limits: 50 MB, accepted mime types
 function validateFile(file) {
   const ext = `.${file.name.split('.').pop().toLowerCase()}`
   if (!ACCEPTED_EXTENSIONS.includes(ext)) {
@@ -14,19 +15,23 @@ function validateFile(file) {
   return null
 }
 
+function deriveTitleFromFilename(filename) {
+  return filename.replace(/\.[^.]+$/, '').trim()
+}
+
 export default function UploadDropzone({ onUploaded }) {
   const [isDragging, setIsDragging]     = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [title, setTitle]               = useState('')
   const [progress, setProgress]         = useState(0)
   const [fileError, setFileError]       = useState(null)
-  const inputRef  = useRef(null)
+  const inputRef    = useRef(null)
   const queryClient = useQueryClient()
 
   const { mutate, isPending, error: mutationError, reset: resetMutation } = useMutation({
     mutationFn: () =>
       documentApi.upload(selectedFile, title, (e) => {
-        setProgress(Math.round((e.loaded / e.total) * 100))
+        if (e.total) setProgress(Math.round((e.loaded / e.total) * 100))
       }),
     onSuccess: ({ data: resp }) => {
       queryClient.invalidateQueries({ queryKey: ['documents'] })
@@ -41,8 +46,7 @@ export default function UploadDropzone({ onUploaded }) {
     setFileError(null)
     resetMutation()
     setSelectedFile(file)
-    // Pre-fill title with filename (minus extension) so user doesn't have to type it
-    setTitle(file.name.replace(/\.[^.]+$/, ''))
+    setTitle(deriveTitleFromFilename(file.name))
   }, [resetMutation])
 
   const clearFile = () => {
@@ -51,6 +55,15 @@ export default function UploadDropzone({ onUploaded }) {
     setProgress(0)
     setFileError(null)
     resetMutation()
+  }
+
+  const handleSubmit = () => {
+    // Title is @NotBlank on backend — guard here for fast feedback
+    if (!title.trim()) {
+      setFileError('Title is required.')
+      return
+    }
+    mutate()
   }
 
   const onDragOver  = (e) => { e.preventDefault(); setIsDragging(true) }
@@ -65,7 +78,6 @@ export default function UploadDropzone({ onUploaded }) {
   const onInputChange = (e) => {
     const file = e.target.files[0]
     if (file) commitFile(file)
-    // Reset input so the same file can be re-selected after removal
     e.target.value = ''
   }
 
@@ -74,11 +86,10 @@ export default function UploadDropzone({ onUploaded }) {
 
   return (
     <div className="upload-zone-wrapper">
-      {/* Drop / browse area */}
       <div
         className={[
           'upload-drop-area',
-          isDragging  ? 'dragging'  : '',
+          isDragging   ? 'dragging'  : '',
           selectedFile ? 'has-file' : '',
         ].filter(Boolean).join(' ')}
         onDragOver={onDragOver}
@@ -134,17 +145,16 @@ export default function UploadDropzone({ onUploaded }) {
       {selectedFile && (
         <div className="upload-meta">
           <div>
-            <label className="upload-label">
-              Title <span className="upload-label-optional">(optional)</span>
-            </label>
+            <label className="upload-label">Title</label>
             <input
               className="upload-input"
               type="text"
-              placeholder={selectedFile.name.replace(/\.[^.]+$/, '')}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               disabled={isPending}
-              maxLength={200}
+              maxLength={500}
+              placeholder="Document title"
+              required
             />
           </div>
 
@@ -154,15 +164,15 @@ export default function UploadDropzone({ onUploaded }) {
                 <div className="upload-progress-fill" style={{ width: `${progress}%` }} />
               </div>
               <span className="upload-progress-label">
-                {/* progress === 100 means file is uploaded but server is still indexing */}
-                {progress < 100 ? `Uploading ${progress}%` : 'Indexing…'}
+                {/* progress === 100: bytes transferred, server still processing */}
+                {progress < 100 ? `Uploading ${progress}%` : 'Processing…'}
               </span>
             </div>
           )}
 
           <button
             className="upload-submit-btn"
-            onClick={() => mutate()}
+            onClick={handleSubmit}
             disabled={isPending}
           >
             {isPending ? 'Uploading…' : 'Upload document'}

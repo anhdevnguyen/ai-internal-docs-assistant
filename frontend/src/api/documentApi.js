@@ -1,35 +1,27 @@
 import axiosClient from './axiosClient'
 
 export const documentApi = {
-  /**
-   * Multipart upload. onUploadProgress lets the caller drive a progress bar.
-   * title is optional — backend falls back to originalFilename.
-   */
   upload(file, title, onUploadProgress) {
     const form = new FormData()
     form.append('file', file)
-    if (title?.trim()) form.append('title', title.trim())
+    // title is required by backend (@NotBlank), always send it
+    form.append('title', title?.trim() || file.name.replace(/\.[^.]+$/, ''))
 
-    return axiosClient.post('/documents', form, {
+    return axiosClient.post('/api/v1/documents', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress,
     })
   },
 
   list(page = 0, size = 20) {
-    return axiosClient.get('/documents', { params: { page, size } })
+    return axiosClient.get('/api/v1/documents', { params: { page, size } })
   },
 
   get(id) {
-    return axiosClient.get(`/documents/${id}`)
-  },
-
-  /** Lightweight status-only endpoint — used for polling in the UI. */
-  getStatus(id) {
-    return axiosClient.get(`/documents/${id}/status`)
+    return axiosClient.get(`/api/v1/documents/${id}`)
   },
 
   remove(id) {
-    return axiosClient.delete(`/documents/${id}`)
+    return axiosClient.delete(`/api/v1/documents/${id}`)
   },
 }
