@@ -4,6 +4,8 @@ import com.vanhdev.backend.shared.exception.UnauthorizedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.util.UUID;
+
 public final class SecurityUtils {
 
     private SecurityUtils() {}
@@ -31,5 +33,13 @@ public final class SecurityUtils {
             return java.util.Optional.empty();
         }
         return java.util.Optional.of(principal);
+    }
+
+    public static UUID requireCurrentUserId() {
+        return requireAuthenticatedUser().userId();
+    }
+
+    public static UUID requireCurrentTenantId() {
+        return requireAuthenticatedUser().tenantId();
     }
 }

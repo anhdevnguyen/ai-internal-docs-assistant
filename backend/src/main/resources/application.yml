@@ -27,3 +27,18 @@ app:
     refresh-token-ttl: ${JWT_REFRESH_TTL:7d}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  storage:
+    base-path: ${STORAGE_BASE_PATH:/tmp/docmind-storage}
+    max-file-size-mb: ${STORAGE_MAX_FILE_MB:50}
+    allowed-mime-types:
+      - application/pdf
+      - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      - text/plain
+    chunking:
+      chunk-size-tokens: ${CHUNKING_CHUNK_SIZE:512}
+      overlap-tokens: ${CHUNKING_OVERLAP:50}
+    ai:
+      openai-api-key: ${OPENAI_API_KEY:}
+      embedding-model: text-embedding-3-small
+      embedding-batch-size: 100
+      base-url: https://api.openai.com/v1
