@@ -3,6 +3,7 @@ package com.vanhdev.backend.admin.application;
 import com.vanhdev.backend.admin.api.dto.AdminDtos.AdminUserResponse;
 import com.vanhdev.backend.admin.api.dto.AdminDtos.ToggleUserActiveResponse;
 import com.vanhdev.backend.admin.infrastructure.AdminUserRepository;
+import com.vanhdev.backend.auth.domain.User;
 import com.vanhdev.backend.shared.api.PagedResponse;
 import com.vanhdev.backend.shared.exception.ResourceNotFoundException;
 import org.springframework.data.domain.Pageable;
@@ -23,28 +24,32 @@ public class AdminUserService {
     @Transactional(readOnly = true)
     public PagedResponse<AdminUserResponse> listUsers(UUID tenantId, Pageable pageable) {
         return PagedResponse.from(
-                adminUserRepository.findByTenantId(tenantId, pageable).map(this::toResponse)
+                adminUserRepository.findByTenantId(tenantId, pageable),
+                this::toResponse
         );
     }
 
     /**
-     * Toggles the active state of a user.
-     * Uses a direct UPDATE query (not load-then-save) for two reasons:
-     * 1. Avoids an unnecessary SELECT for a single boolean flip.
-     * 2. The WHERE clause includes tenant_id — this is the authorization check.
-     *    If a malicious admin from Tenant A sends Tenant B's userId, the query
-     *    matches 0 rows, and we throw ResourceNotFoundException, leaking nothing.
+     * Uses domain methods activate()/deactivate() rather than a direct UPDATE query.
+     * Reason: User.updatedAt must be kept consistent, and domain methods own that invariant.
+     * The tenant-scoped lookup is the authorization check — if a malicious admin sends
+     * another tenant's userId, findByIdAndTenantId returns empty → 404, leaking nothing.
      */
     @Transactional
     public ToggleUserActiveResponse setUserActive(UUID userId, UUID tenantId, boolean active) {
-        int updated = adminUserRepository.setActiveByIdAndTenantId(userId, tenantId, active);
-        if (updated == 0) {
-            throw new ResourceNotFoundException("USER_NOT_FOUND", "User not found: " + userId);
+        User user = adminUserRepository.findByIdAndTenantId(userId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("USER_NOT_FOUND", "User not found: " + userId));
+
+        if (active) {
+            user.activate();
+        } else {
+            user.deactivate();
         }
-        return new ToggleUserActiveResponse(userId, active);
+
+        return new ToggleUserActiveResponse(userId, user.isActive());
     }
 
-    private AdminUserResponse toResponse(com.vanhdev.backend.auth.domain.User user) {
+    private AdminUserResponse toResponse(User user) {
         return new AdminUserResponse(
                 user.getId(),
                 user.getEmail(),
