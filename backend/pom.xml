@@ -21,20 +21,9 @@
 	<properties>
 		<java.version>21</java.version>
 		<jjwt.version>0.12.6</jjwt.version>
-		<!--
-		  CVE-2025-66516 (CVSS 10.0): XXE injection via crafted XFA content in PDFs.
-		  The fix resides in tika-core — upgrading tika-parser-pdf-module alone is NOT sufficient.
-		  Both tika-core AND tika-parsers-standard-package must be >= 3.2.2.
-		  Tika 2.x branch has no backport. Migration to 3.x is required.
-		-->
 		<tika.version>3.2.2</tika.version>
-		<!--
-		  Force BouncyCastle 1.80 to resolve CVE-2024-29857, CVE-2024-30172, CVE-2024-34447
-		  (CVSS 7.5) in bcprov-jdk18on:1.77 pulled transitively via tika-parser-pdf-module.
-		  This override ensures the safe version is used regardless of Tika's own dependency
-		  resolution. Remove this override once Tika declares a dependency on BC >= 1.80.
-		-->
 		<bouncycastle.version>1.80</bouncycastle.version>
+		<bucket4j.version>8.10.1</bucket4j.version>
 	</properties>
 
 	<dependencyManagement>
@@ -126,6 +115,13 @@
 			<artifactId>jjwt-jackson</artifactId>
 			<version>${jjwt.version}</version>
 			<scope>runtime</scope>
+		</dependency>
+
+		<!-- Rate Limiting -->
+		<dependency>
+			<groupId>com.bucket4j</groupId>
+			<artifactId>bucket4j-core</artifactId>
+			<version>${bucket4j.version}</version>
 		</dependency>
 
 		<!-- Dev tools -->

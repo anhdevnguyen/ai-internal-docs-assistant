@@ -33,6 +33,23 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+# Expose only the health endpoint — all others are blocked in SecurityConfig.
+# Sensitive endpoints (env, beans, loggers) must never be reachable in production.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  pattern:
+    # MDC fields are injected by MdcRequestFilter on every request.
+    # Fields will be blank ("") for system threads not associated with a request.
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [reqId=%X{requestId}][tenant=%X{tenantId}][user=%X{userId}] %logger{36} - %msg%n"
+
 app:
   jwt:
     access-token-secret: ${JWT_ACCESS_SECRET:u4H5lW5l3pze23eYpu88jTKXgjz5cf395WXXOfQiSAZ}
@@ -53,19 +70,12 @@ app:
   ai:
     openai-api-key: ${OPENAI_API_KEY:}
     base-url: https://api.openai.com/v1
-
-    # Embedding
     embedding-model: text-embedding-3-small
     embedding-batch-size: 20
-
-    # Chat completion
-    # temperature=0 — RAG requires factual accuracy, not creativity
     chat-model: ${CHAT_MODEL:gpt-4o-mini}
     chat-max-tokens: ${CHAT_MAX_TOKENS:1500}
+    # temperature=0 — RAG requires factual accuracy, not creativity
     chat-temperature: 0.0
-
-    # Retrieval tuning
-    # top-k=5 is a conservative default; increase if context window budget allows
     retrieval-top-k: ${RETRIEVAL_TOP_K:5}
-    # Chunks with cosine similarity below this threshold introduce noise, not signal
+    # Chunks below this cosine similarity threshold introduce noise, not signal
     retrieval-min-similarity: ${RETRIEVAL_MIN_SIMILARITY:0.70}
