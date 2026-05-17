@@ -82,4 +82,16 @@ public class Document {
         this.errorMessage = reason;
         this.updatedAt = Instant.now();
     }
+
+    /**
+     * Resets a FAILED document back to PENDING so the ingestion pipeline can retry.
+     * Only called by AdminDocumentService.forceReindex() after stale chunks are purged.
+     * Not exposed as a general-purpose method — the only valid transition to PENDING
+     * after creation is a retry from FAILED.
+     */
+    public void resetToPending() {
+        this.status = DocumentStatus.PENDING;
+        this.errorMessage = null;
+        this.updatedAt = Instant.now();
+    }
 }
