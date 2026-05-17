@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import AdminLayout from '../../layouts/AdminLayout'
 import StatusBadge from '../../components/documents/StatusBadge'
 import { adminApi } from '../../api/adminApi'
+import { useToast } from '../../contexts/ToastContext'
 
 const PAGE_SIZE = 20
 
@@ -14,9 +15,10 @@ function formatDate(iso) {
 }
 
 export default function AdminDocumentsPage() {
-  const [page, setPage] = useState(0)
+  const [page, setPage]          = useState(0)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const queryClient = useQueryClient()
+  const { toast }   = useToast()
 
   const { data: pagedData, isLoading, isError } = useQuery({
     queryKey: ['admin', 'documents', page],
@@ -30,7 +32,9 @@ export default function AdminDocumentsPage() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'documents'] })
       queryClient.invalidateQueries({ queryKey: ['admin', 'overview'] })
       setConfirmDeleteId(null)
+      toast.success('Document deleted')
     },
+    onError: () => toast.error('Failed to delete document'),
   })
 
   const { mutate: reindex, isPending: isReindexing, variables: reindexingId } = useMutation({
@@ -38,11 +42,13 @@ export default function AdminDocumentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'documents'] })
       queryClient.invalidateQueries({ queryKey: ['admin', 'overview'] })
+      toast.info('Re-indexing started')
     },
+    onError: () => toast.error('Failed to start re-index'),
   })
 
-  const documents = pagedData?.content ?? []
-  const totalPages = pagedData?.totalPages ?? 1
+  const documents     = pagedData?.content ?? []
+  const totalPages    = pagedData?.totalPages ?? 1
   const totalElements = pagedData?.totalElements ?? 0
 
   return (
@@ -133,23 +139,9 @@ export default function AdminDocumentsPage() {
                 <div className="docs-pagination">
                   <span>{totalElements} documents</span>
                   <div className="docs-pagination-btns">
-                    <button
-                      className="docs-page-btn"
-                      onClick={() => setPage((p) => p - 1)}
-                      disabled={page === 0}
-                    >
-                      ← Prev
-                    </button>
-                    <span className="docs-page-indicator">
-                      {page + 1} / {totalPages}
-                    </span>
-                    <button
-                      className="docs-page-btn"
-                      onClick={() => setPage((p) => p + 1)}
-                      disabled={page >= totalPages - 1}
-                    >
-                      Next →
-                    </button>
+                    <button className="docs-page-btn" onClick={() => setPage((p) => p - 1)} disabled={page === 0}>← Prev</button>
+                    <span className="docs-page-indicator">{page + 1} / {totalPages}</span>
+                    <button className="docs-page-btn" onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages - 1}>Next →</button>
                   </div>
                 </div>
               )}
@@ -161,7 +153,6 @@ export default function AdminDocumentsPage() {
   )
 }
 
-/** Maps MIME type to a short human label for the table cell. */
 function mimeLabel(mimeType) {
   if (!mimeType) return '—'
   if (mimeType === 'application/pdf') return 'PDF'
@@ -176,11 +167,8 @@ function AdminTableSkeleton({ cols }) {
       {[70, 50, 80, 60].map((w, i) => (
         <div key={i} className="docs-skeleton-row">
           {Array.from({ length: cols }, (_, j) => (
-            <div
-              key={j}
-              className="skeleton"
-              style={{ height: 13, width: j === 0 ? `${w}%` : 60, maxWidth: j === 0 ? 280 : 'none' }}
-            />
+            <div key={j} className="skeleton"
+              style={{ height: 13, width: j === 0 ? `${w}%` : 60, maxWidth: j === 0 ? 280 : 'none' }} />
           ))}
         </div>
       ))}
