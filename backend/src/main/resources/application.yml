@@ -52,7 +52,7 @@ logging:
 
 app:
   jwt:
-    access-token-secret: ${JWT_ACCESS_SECRET:u4H5lW5l3pze23eYpu88jTKXgjz5cf395WXXOfQiSAZ}
+    access-token-secret: ${JWT_ACCESS_SECRET:aSMSBe5Sl7AVuUMIPDNJpsPnYslzXmTn5JEHpPbGSKB}
     access-token-ttl: ${JWT_ACCESS_TTL:15m}
     refresh-token-ttl: ${JWT_REFRESH_TTL:7d}
   cors:
@@ -68,7 +68,7 @@ app:
     chunk-size-tokens: ${CHUNKING_CHUNK_SIZE:512}
     overlap-tokens: ${CHUNKING_OVERLAP:50}
   ai:
-    openai-api-key: ${OPENAI_API_KEY:}
+    openai-api-key: ${OPENAI_API_KEY:your-openai-api-key}
     base-url: https://api.openai.com/v1
     embedding-model: text-embedding-3-small
     embedding-batch-size: 20
