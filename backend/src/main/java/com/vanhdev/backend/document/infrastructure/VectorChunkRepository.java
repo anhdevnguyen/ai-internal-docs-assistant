@@ -49,4 +49,11 @@ public class VectorChunkRepository {
         }
         return sb.append("]").toString();
     }
+
+    /**
+     * Bulk-deletes all chunks belonging to a document.
+     * Called before hard-deleting a document and before force re-indexing (to prevent
+     * duplicate embeddings). Spring Data derives the DELETE query from the method name.
+     */
+    public void deleteByDocumentId(UUID documentId);
 }
