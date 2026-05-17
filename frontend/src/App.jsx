@@ -7,6 +7,9 @@ import DashboardPage from './pages/DashboardPage'
 import DocumentsPage from './pages/DocumentsPage'
 import DocumentDetailPage from './pages/DocumentDetailPage'
 import ChatPage from './pages/ChatPage'
+import AdminOverviewPage from './pages/admin/AdminOverviewPage'
+import AdminDocumentsPage from './pages/admin/AdminDocumentsPage'
+import AdminUsersPage from './pages/admin/AdminUsersPage'
 
 export default function App() {
   return (
@@ -47,11 +50,32 @@ export default function App() {
             }
           />
 
+          {/*
+           * Admin routes are nested under ProtectedRoute with requiredRole="ADMIN".
+           * Each sub-page carries its own AdminLayout — no shared outlet needed
+           * since layout is thin (just a subnav strip inside AppLayout).
+           */}
           <Route
-            path="/admin/*"
+            path="/admin"
             element={
               <ProtectedRoute requiredRole="ADMIN">
-                <DashboardPage />
+                <AdminOverviewPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/documents"
+            element={
+              <ProtectedRoute requiredRole="ADMIN">
+                <AdminDocumentsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <ProtectedRoute requiredRole="ADMIN">
+                <AdminUsersPage />
               </ProtectedRoute>
             }
           />

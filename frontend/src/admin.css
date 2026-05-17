@@ -1,0 +1,355 @@
+/* ── Admin shell ─────────────────────────────────────────────────────────── */
+
+.admin-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.admin-subnav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 24px 0;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.admin-subnav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.admin-subnav-item:hover {
+  color: var(--text);
+}
+
+.admin-subnav-item.active {
+  color: var(--text);
+  border-bottom-color: var(--accent, #6366f1);
+}
+
+.admin-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ── Admin page shell ────────────────────────────────────────────────────── */
+
+.admin-page {
+  padding: 28px 32px;
+  max-width: 1100px;
+}
+
+.admin-page-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 24px;
+}
+
+.admin-error-msg {
+  font-size: 13px;
+  color: var(--error, #ef4444);
+  padding: 12px 0;
+}
+
+.admin-empty-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 24px 0;
+}
+
+/* ── Metrics grid ────────────────────────────────────────────────────────── */
+
+.admin-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.admin-metric-card {
+  background: var(--surface, #1a1a1a);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-metric-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.admin-metric-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+}
+
+.admin-metric-skeleton {
+  height: 28px;
+  width: 60px;
+  border-radius: 4px;
+}
+
+/* ── Two-panel section row ───────────────────────────────────────────────── */
+
+.admin-section-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 760px) {
+  .admin-section-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Panel ───────────────────────────────────────────────────────────────── */
+
+.admin-panel {
+  background: var(--surface, #1a1a1a);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+
+.admin-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 16px;
+}
+
+/* ── Document status bar chart ───────────────────────────────────────────── */
+
+.admin-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-status-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.admin-status-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.admin-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.admin-status-name {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex: 1;
+}
+
+.admin-status-count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.admin-status-bar-track {
+  height: 5px;
+  background: var(--border);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.admin-status-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+
+.admin-status-total {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* ── Top documents list ──────────────────────────────────────────────────── */
+
+.admin-top-docs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-top-doc-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.admin-top-doc-rank {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.admin-top-doc-title {
+  flex: 1;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-top-doc-hits {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Admin table tweaks ──────────────────────────────────────────────────── */
+
+.admin-table .admin-action-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.admin-action-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.admin-action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.admin-action-btn--retry {
+  background: var(--warning-subtle, rgba(245, 158, 11, 0.12));
+  border-color: var(--warning, #f59e0b);
+  color: var(--warning, #f59e0b);
+}
+
+.admin-doc-error-hint {
+  font-size: 11px;
+  color: var(--error, #ef4444);
+}
+
+/* ── Users table ─────────────────────────────────────────────────────────── */
+
+.admin-user-row--inactive td {
+  opacity: 0.55;
+}
+
+.admin-self-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: var(--accent-subtle, rgba(99, 102, 241, 0.12));
+  color: var(--accent, #6366f1);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.admin-role-chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-role-chip--admin {
+  background: var(--accent-subtle, rgba(99, 102, 241, 0.12));
+  color: var(--accent, #6366f1);
+}
+
+.admin-role-chip--user {
+  background: var(--border);
+  color: var(--text-muted);
+}
+
+.admin-active-badge {
+  font-size: 12px;
+}
+
+.admin-active-badge.active {
+  color: var(--success, #22c55e);
+}
+
+.admin-active-badge.inactive {
+  color: var(--text-muted);
+}
+
+.admin-toggle-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color 0.15s, border-color 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+
+.admin-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.admin-toggle-btn--deactivate:hover {
+  color: var(--error, #ef4444);
+  border-color: var(--error, #ef4444);
+}
+
+.admin-toggle-btn--activate:hover {
+  color: var(--success, #22c55e);
+  border-color: var(--success, #22c55e);
+}
