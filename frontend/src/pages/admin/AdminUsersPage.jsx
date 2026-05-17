@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import AdminLayout from '../../layouts/AdminLayout'
 import { adminApi } from '../../api/adminApi'
 import { useAuth } from '../../hooks/useAuth'
+import { useToast } from '../../contexts/ToastContext'
 
 const PAGE_SIZE = 20
 
@@ -17,6 +18,7 @@ export default function AdminUsersPage() {
   const [page, setPage] = useState(0)
   const { user: currentUser } = useAuth()
   const queryClient = useQueryClient()
+  const { toast }   = useToast()
 
   const { data: pagedData, isLoading, isError } = useQuery({
     queryKey: ['admin', 'users', page],
@@ -27,14 +29,16 @@ export default function AdminUsersPage() {
   const { mutate: toggleActive, isPending: isToggling, variables: togglingUserId } = useMutation({
     mutationFn: ({ userId, isActive }) =>
       isActive ? adminApi.deactivateUser(userId) : adminApi.activateUser(userId),
-    onSuccess: () => {
+    onSuccess: (_, { isActive }) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] })
       queryClient.invalidateQueries({ queryKey: ['admin', 'overview'] })
+      toast.success(isActive ? 'User deactivated' : 'User activated')
     },
+    onError: () => toast.error('Failed to update user status'),
   })
 
-  const users = pagedData?.content ?? []
-  const totalPages = pagedData?.totalPages ?? 1
+  const users         = pagedData?.content ?? []
+  const totalPages    = pagedData?.totalPages ?? 1
   const totalElements = pagedData?.totalElements ?? 0
 
   return (
@@ -63,7 +67,7 @@ export default function AdminUsersPage() {
                 </thead>
                 <tbody>
                   {users.map((u) => {
-                    const isSelf = u.id === currentUser?.id
+                    const isSelf    = u.id === currentUser?.id
                     const isPending = isToggling && togglingUserId?.userId === u.id
 
                     return (
@@ -84,21 +88,14 @@ export default function AdminUsersPage() {
                           </span>
                         </td>
                         <td>
-                          {/*
-                           * Prevent admin from deactivating their own account — would lock them out.
-                           * Backend also enforces tenant isolation but self-lockout is a UX concern only.
-                           */}
+                          {/* Prevent self-deactivation — would lock admin out */}
                           {!isSelf && (
                             <button
                               className={`admin-toggle-btn ${u.isActive ? 'admin-toggle-btn--deactivate' : 'admin-toggle-btn--activate'}`}
                               onClick={() => toggleActive({ userId: u.id, isActive: u.isActive })}
                               disabled={isPending}
                             >
-                              {isPending
-                                ? '…'
-                                : u.isActive
-                                ? 'Deactivate'
-                                : 'Activate'}
+                              {isPending ? '…' : u.isActive ? 'Deactivate' : 'Activate'}
                             </button>
                           )}
                         </td>
@@ -112,23 +109,9 @@ export default function AdminUsersPage() {
                 <div className="docs-pagination">
                   <span>{totalElements} users</span>
                   <div className="docs-pagination-btns">
-                    <button
-                      className="docs-page-btn"
-                      onClick={() => setPage((p) => p - 1)}
-                      disabled={page === 0}
-                    >
-                      ← Prev
-                    </button>
-                    <span className="docs-page-indicator">
-                      {page + 1} / {totalPages}
-                    </span>
-                    <button
-                      className="docs-page-btn"
-                      onClick={() => setPage((p) => p + 1)}
-                      disabled={page >= totalPages - 1}
-                    >
-                      Next →
-                    </button>
+                    <button className="docs-page-btn" onClick={() => setPage((p) => p - 1)} disabled={page === 0}>← Prev</button>
+                    <span className="docs-page-indicator">{page + 1} / {totalPages}</span>
+                    <button className="docs-page-btn" onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages - 1}>Next →</button>
                   </div>
                 </div>
               )}

@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { documentApi } from '../api/documentApi'
+import { useToast } from '../contexts/ToastContext'
 import AppLayout from '../layouts/AppLayout'
 import StatusBadge from '../components/documents/StatusBadge'
 import UploadDropzone from '../components/documents/UploadDropzone'
 
 const PAGE_SIZE = 20
-
 const ACTIVE_STATUSES = new Set(['PENDING', 'PROCESSING'])
 
 function formatDate(iso) {
@@ -22,11 +22,10 @@ export default function DocumentsPage() {
   const [showUpload, setShowUpload] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
   const queryClient = useQueryClient()
+  const { toast }   = useToast()
 
   const { data: pagedData, isLoading, isError } = useQuery({
     queryKey: ['documents', page],
-    // Unwrap Axios response → ApiResponse.data (the PagedResponse object)
-    // so consumers get { content, totalPages, totalElements } directly.
     select: (res) => res.data.data,
     queryFn: () => documentApi.list(page, PAGE_SIZE),
     refetchOnWindowFocus: true,
@@ -41,6 +40,10 @@ export default function DocumentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] })
       setDeletingId(null)
+      toast.success('Document deleted')
+    },
+    onError: () => {
+      toast.error('Failed to delete document')
     },
   })
 
@@ -50,8 +53,8 @@ export default function DocumentsPage() {
 
   const handleUploaded = () => {
     setShowUpload(false)
-    // Immediate refetch so the new PENDING document appears without waiting for next poll
     queryClient.invalidateQueries({ queryKey: ['documents', page] })
+    toast.success('Document uploaded — ingestion started')
   }
 
   return (
@@ -87,9 +90,7 @@ export default function DocumentsPage() {
           ) : documents.length === 0 ? (
             <div className="docs-empty">
               <div className="docs-empty-icon"><EmptyIcon /></div>
-              <p className="docs-empty-text">
-                No documents yet. Upload one to get started.
-              </p>
+              <p className="docs-empty-text">No documents yet. Upload one to get started.</p>
             </div>
           ) : (
             <>
@@ -198,7 +199,7 @@ function SkeletonRows() {
 const PlusIcon = () => (
   <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor"
     strokeWidth="2" strokeLinecap="round">
-    <path d="M6.5 1v11M1 6.5h11"/>
+    <path d="M6.5 1v11M1 6.5h11" />
   </svg>
 )
 
@@ -206,9 +207,9 @@ const EmptyIcon = () => (
   <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"
     style={{ color: 'var(--text-muted)', margin: '0 auto' }}>
-    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-    <polyline points="14 2 14 8 20 8"/>
-    <line x1="16" y1="13" x2="8" y2="13"/>
-    <line x1="16" y1="17" x2="8" y2="17"/>
+    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
   </svg>
 )
