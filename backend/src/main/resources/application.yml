@@ -52,7 +52,7 @@ logging:
 
 app:
   jwt:
-    access-token-secret: ${JWT_ACCESS_SECRET}
+    access-token-secret: ${JWT_ACCESS_SECRET:aSMSBe5Sl7AVuUMIPDNJpsPnYslzXmTn5JEHpPbGSKB}
     access-token-ttl: ${JWT_ACCESS_TTL:15m}
     refresh-token-ttl: ${JWT_REFRESH_TTL:7d}
   cors:
