@@ -31,16 +31,19 @@ public class SecurityConfig {
 
     private final JwtProvider jwtProvider;
     private final ObjectMapper objectMapper;
+    private final CorsProperties corsProperties;
 
-    public SecurityConfig(JwtProvider jwtProvider, ObjectMapper objectMapper) {
+    public SecurityConfig(JwtProvider jwtProvider,
+                          ObjectMapper objectMapper,
+                          CorsProperties corsProperties) {
         this.jwtProvider = jwtProvider;
         this.objectMapper = objectMapper;
+        this.corsProperties = corsProperties;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
-                // JWT API — no session, no CSRF surface
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(c -> c.configurationSource(corsConfigurationSource()))
@@ -48,11 +51,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login", "/auth/refresh").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
+                        // Explicitly block all other actuator endpoints — never expose env, beans,
+                        // or metrics without authentication in a production system
+                        .requestMatchers("/actuator/**").denyAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
 
-                // Custom 401 response — returns JSON instead of default Spring redirect/html
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((request, response, e) -> {
                             response.setStatus(401);
@@ -80,14 +85,15 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        // BCrypt with default strength (10 rounds) — appropriate for production
         return new BCryptPasswordEncoder();
     }
 
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
+        List<String> allowedOrigins = corsProperties.allowedOrigins();
+
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

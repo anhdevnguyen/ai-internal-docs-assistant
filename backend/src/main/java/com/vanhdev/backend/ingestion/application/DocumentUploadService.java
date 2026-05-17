@@ -2,6 +2,7 @@ package com.vanhdev.backend.ingestion.application;
 
 import com.vanhdev.backend.document.domain.Document;
 import com.vanhdev.backend.document.infrastructure.DocumentJpaRepository;
+import com.vanhdev.backend.ingestion.infrastructure.extraction.FileSignatureValidator;
 import com.vanhdev.backend.ingestion.infrastructure.storage.StoragePort;
 import com.vanhdev.backend.shared.config.StorageProperties;
 import com.vanhdev.backend.shared.exception.InvalidFileException;
@@ -23,27 +24,34 @@ public class DocumentUploadService {
     private final DocumentJpaRepository documentRepository;
     private final DocumentIngestionPipeline ingestionPipeline;
     private final StorageProperties storageProperties;
+    private final FileSignatureValidator fileSignatureValidator;
 
     public DocumentUploadService(StoragePort storagePort,
                                  DocumentJpaRepository documentRepository,
                                  DocumentIngestionPipeline ingestionPipeline,
-                                 StorageProperties storageProperties) {
+                                 StorageProperties storageProperties,
+                                 FileSignatureValidator fileSignatureValidator) {
         this.storagePort = storagePort;
         this.documentRepository = documentRepository;
         this.ingestionPipeline = ingestionPipeline;
         this.storageProperties = storageProperties;
+        this.fileSignatureValidator = fileSignatureValidator;
     }
 
     /**
      * Validates, stores, and registers a document, then fires the async ingestion pipeline.
      * This method commits a single short transaction (file record only).
      * The pipeline runs entirely outside this transaction on a separate thread.
-     * Returns the persisted Document so the controller can build the 202 response.
      */
     @Transactional
     public Document acceptUpload(UUID tenantId, UUID uploadedBy,
                                  String title, MultipartFile file) {
-        validateFile(file);
+        validateSize(file);
+
+        // Detect real MIME type from magic bytes — client-declared Content-Type is untrusted.
+        // This is the primary security gate; StorageProperties.allowedMimeTypes provides
+        // a secondary configuration-level filter for the stored record.
+        String detectedMimeType = fileSignatureValidator.detectAndValidate(file);
 
         UUID documentId = UUID.randomUUID();
 
@@ -65,29 +73,21 @@ public class DocumentUploadService {
                 title,
                 file.getOriginalFilename(),
                 storagePath,
-                file.getContentType()
+                detectedMimeType  // Store detected type, not the client-declared one
         );
-        // Override auto-generated ID with our pre-allocated UUID so storagePath and documentId are consistent
         Document saved = documentRepository.save(document);
 
-        log.info("Document accepted [documentId={}, tenantId={}]", saved.getId(), tenantId);
+        log.info("Document accepted [documentId={}, tenantId={}, mimeType={}]",
+                saved.getId(), tenantId, detectedMimeType);
 
-        // Fire-and-forget: pipeline runs on the ingestion thread pool after this transaction commits.
-        // Spring's @Async proxy guarantees the method is called after the current TX commits,
-        // so the pipeline will always find the document record in PENDING state.
         ingestionPipeline.process(tenantId, saved.getId(), storagePath);
 
         return saved;
     }
 
-    private void validateFile(MultipartFile file) {
+    private void validateSize(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new InvalidFileException("Uploaded file is empty");
-        }
-
-        String contentType = file.getContentType();
-        if (contentType == null || !storageProperties.allowedMimeTypes().contains(contentType)) {
-            throw new InvalidFileException("File type not permitted: " + contentType);
         }
 
         long maxBytes = (long) storageProperties.maxFileSizeMb() * 1024 * 1024;

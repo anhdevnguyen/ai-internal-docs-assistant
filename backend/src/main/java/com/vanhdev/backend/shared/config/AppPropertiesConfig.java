@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @EnableConfigurationProperties({
         AiProperties.class,
         ChunkingProperties.class,
-        StorageProperties.class
+        StorageProperties.class,
+        CorsProperties.class
 })
 public class AppPropertiesConfig {}

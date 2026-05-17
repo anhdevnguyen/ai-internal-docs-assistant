@@ -1,8 +1,8 @@
 package com.vanhdev.backend.shared.exception;
 
+import com.vanhdev.backend.auth.infrastructure.LoginRateLimiter;
 import com.vanhdev.backend.shared.api.ApiResponse;
-import com.vanhdev.backend.shared.exception.ProviderRateLimitException;
-import com.vanhdev.backend.shared.exception.LlmCompletionException;
+import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -50,6 +50,10 @@ public class GlobalExceptionHandler {
         return ApiResponse.fail("FILE_TOO_LARGE", "Uploaded file exceeds the maximum allowed size");
     }
 
+    /**
+     * Handles validation failures on @RequestBody fields (annotated with @Valid).
+     * Collects all field-level messages into a single readable response.
+     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleValidation(MethodArgumentNotValidException ex) {
@@ -59,12 +63,31 @@ public class GlobalExceptionHandler {
         return ApiResponse.fail("VALIDATION_ERROR", message);
     }
 
-    @ExceptionHandler(Exception.class)
-    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public ApiResponse<Void> handleUnexpected(Exception ex) {
-        // Log full stacktrace for unexpected errors — never leak internals to client
-        log.error("Unhandled exception", ex);
-        return ApiResponse.fail("INTERNAL_ERROR", "An unexpected error occurred");
+    /**
+     * Handles validation failures on @RequestParam and @PathVariable fields.
+     * These use javax/jakarta constraint annotations and throw ConstraintViolationException,
+     * NOT MethodArgumentNotValidException — a common pitfall that causes silent 500 fallthrough.
+     * Required when using @Validated at the class level (e.g. DocumentController).
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleConstraintViolation(ConstraintViolationException ex) {
+        String message = ex.getConstraintViolations().stream()
+                .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                .collect(Collectors.joining("; "));
+        return ApiResponse.fail("VALIDATION_ERROR", message);
+    }
+
+    /**
+     * Maps login rate limit breaches to 429 Too Many Requests.
+     * Message is intentionally generic to avoid confirming attack surface details.
+     */
+    @ExceptionHandler(LoginRateLimiter.LoginRateLimitException.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public ApiResponse<Void> handleLoginRateLimit(LoginRateLimiter.LoginRateLimitException ex) {
+        // Log at WARN — this is expected noise under attack, not an application error
+        log.warn("Login rate limit exceeded: {}", ex.getMessage());
+        return ApiResponse.fail("RATE_LIMIT_EXCEEDED", ex.getMessage());
     }
 
     @ExceptionHandler(ProviderRateLimitException.class)
@@ -79,5 +102,12 @@ public class GlobalExceptionHandler {
     public ApiResponse<Void> handleLlmCompletion(LlmCompletionException ex) {
         log.error("LLM completion failed: {}", ex.getMessage(), ex);
         return ApiResponse.fail("LLM_COMPLETION_FAILED", "Failed to generate AI response. Please try again.");
+    }
+
+    @ExceptionHandler(Exception.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public ApiResponse<Void> handleUnexpected(Exception ex) {
+        log.error("Unhandled exception", ex);
+        return ApiResponse.fail("INTERNAL_ERROR", "An unexpected error occurred");
     }
 }
